@@ -66,12 +66,15 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     export SDKROOT="${sdkRoot}"
     export LIBRARY_PATH="${pkgs.libcxx}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
     export MACOSX_DEPLOYMENT_TARGET="14.0"
-    # Prevent stdenv CC wrapper paths from interfering with SwiftPM
-    unset NIX_LDFLAGS NIX_CFLAGS_COMPILE
+    # Prevent stdenv CC wrapper (gcc) from interfering with SwiftPM
+    unset NIX_LDFLAGS NIX_CFLAGS_COMPILE CC CXX
   ''
   + pkgs.lib.optionalString (!isDarwin) ''
     export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
     export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
+    # SwiftPM uses CC for C compilation. stdenv sets CC=gcc which doesn't
+    # understand clang flags like -target and -fblocks. Use toolchain's clang.
+    export CC="${swift}/bin/clang"
 
     # Create a sysroot with the directory layout Swift expects.
     # Swift's glibc.modulemap hardcodes /usr/include paths, the Swift
