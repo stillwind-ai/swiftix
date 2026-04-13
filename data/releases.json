@@ -4,7 +4,9 @@
     "tag": "swift-6.3-RELEASE",
     "date": "2026-03-24",
     "hashes": {
-      "macOS": "sha256-/eQr/y4YfaiPcgM5h76WE98QZeC6WmKbwsPBlojQnL0="
+      "macOS": "sha256-/eQr/y4YfaiPcgM5h76WE98QZeC6WmKbwsPBlojQnL0=",
+      "linux-x86_64": "sha256-hbp90WlgtgriprgXMbriNvt85TOaB2Qo/JhNlgZo/b0=",
+      "linux-aarch64": "sha256-FVDEuP3wPydT6C03TKF3iGQ14EfjJlah3P0/ENeJPgs="
     }
   }
 ]

@@ -75,14 +75,30 @@
           # Test against the latest available toolchain
           swift = self.packages.${system}.latest;
 
-          # macOS needs the SDK for compilation/linking
-          sdkDeps = pkgs.lib.optionals isDarwin [ pkgs.apple-sdk_15 ];
-          sdkFlags = pkgs.lib.optionalString isDarwin
-            "-sdk ${pkgs.apple-sdk_15}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
+          # Platform-specific dependencies and flags for compilation checks
+          checkDeps =
+            if isDarwin then [ pkgs.apple-sdk_15 ]
+            else [ pkgs.stdenv.cc pkgs.stdenv.cc.libc pkgs.stdenv.cc.libc.dev ];
+          # On Linux, swiftc's bundled clang can't find glibc and gcc CRT
+          # files in the Nix store. We need to pass explicit search paths.
+          gccLib = if isDarwin then null else
+            let cc = pkgs.stdenv.cc.cc;
+                triple = pkgs.stdenv.hostPlatform.config;
+            in "${cc}/lib/gcc/${triple}/${cc.version}";
+
+          swiftcFlags =
+            if isDarwin then
+              "-sdk ${pkgs.apple-sdk_15}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            else builtins.concatStringsSep " " [
+              "-Xcc --gcc-toolchain=${pkgs.stdenv.cc.cc}"
+              "-Xcc --sysroot=${pkgs.stdenv.cc.libc}"
+              "-Xclang-linker --gcc-toolchain=${pkgs.stdenv.cc.cc}"
+              "-Xclang-linker --sysroot=${pkgs.stdenv.cc.libc}"
+            ];
         in {
           # Smoke test: key binaries respond to --version
           version = pkgs.runCommand "swiftix-check-version" {
-            buildInputs = sdkDeps;
+            buildInputs = checkDeps;
           } ''
             ${swift}/bin/swift --version
             ${swift}/bin/swiftc --version
@@ -91,26 +107,38 @@
 
           # Compile and run a Swift program
           compile = pkgs.runCommand "swiftix-check-compile" {
-            buildInputs = sdkDeps;
-          } ''
+            buildInputs = checkDeps;
+          } (
+            # On Linux, swiftc's bundled clang needs help finding glibc
+            # headers and CRT files in the Nix store.
+            (pkgs.lib.optionalString (!isDarwin) ''
+              export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
+              export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
+            '')
+            + ''
             cat > hello.swift << 'EOF'
             print("Hello from swiftix!")
             let x = (1...10).reduce(0, +)
             guard x == 55 else { fatalError("math is broken") }
             print("Sum 1..10 = \(x)")
             EOF
-            ${swift}/bin/swiftc ${sdkFlags} -o hello hello.swift
+            ${swift}/bin/swiftc ${swiftcFlags} -o hello hello.swift
             ./hello | grep -q "Hello from swiftix"
             touch $out
-          '';
+          '');
 
           # Verify the REPL / interpreter mode works
           interpret = pkgs.runCommand "swiftix-check-interpret" {
-            buildInputs = sdkDeps;
-          } ''
-            echo 'print("interpreted!")' | ${swift}/bin/swift ${sdkFlags} - 2>&1 | grep -q "interpreted"
+            buildInputs = checkDeps;
+          } (
+            (pkgs.lib.optionalString (!isDarwin) ''
+              export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
+              export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
+            '')
+            + ''
+            echo 'print("interpreted!")' | ${swift}/bin/swift ${swiftcFlags} - 2>&1 | grep -q "interpreted"
             touch $out
-          '';
+          '');
         }
       );
     };

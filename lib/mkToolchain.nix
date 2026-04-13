@@ -36,7 +36,21 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = if isDarwin then [
     pkgs.xar
     pkgs.cpio
-  ] else [];
+  ] else [
+    pkgs.autoPatchelfHook
+  ];
+
+  buildInputs = pkgs.lib.optionals (!isDarwin) [
+    pkgs.stdenv.cc.cc.lib  # libstdc++
+    pkgs.ncurses
+    pkgs.libedit
+    pkgs.libxml2
+    pkgs.curl
+    pkgs.libuuid
+    pkgs.zlib
+    pkgs.sqlite
+    pkgs.python312
+  ];
 
   installPhase = if isDarwin then ''
     runHook preInstall
@@ -61,10 +75,30 @@ pkgs.stdenv.mkDerivation {
   '' else ''
     runHook preInstall
 
-    mkdir -p $out
-    tar xzf $src --strip-components=2 -C $out
+    mkdir -p $out tmp_extract
+    tar xzf $src --strip-components=2 --no-same-owner -C tmp_extract
+    cp -a tmp_extract/* $out/
+    rm -rf tmp_extract
 
     runHook postInstall
+  '';
+
+  # On Linux, set up search paths and compat symlinks before autoPatchelfHook runs
+  preFixup = pkgs.lib.optionalString (!isDarwin) ''
+    # Add the toolchain's own lib directories so bundled Swift
+    # runtime libraries are found by autoPatchelfHook.
+    addAutoPatchelfSearchPath $out/lib
+    addAutoPatchelfSearchPath $out/lib/swift/linux
+
+    # The Ubuntu-built binaries expect Ubuntu sonames which differ from
+    # nixpkgs. Create a compat directory with symlinks.
+    mkdir -p $out/lib/compat
+    # Point Ubuntu sonames to the actual nixpkgs shared libraries.
+    # The Ubuntu binaries expect libxml2.so.2 and libedit.so.2, but nixpkgs
+    # has different soname versions (libxml2.so.16, libedit.so.0).
+    ln -sf "$(ls ${pkgs.libxml2.out}/lib/libxml2.so.* | head -1)" $out/lib/compat/libxml2.so.2
+    ln -sf "$(ls ${pkgs.libedit.out}/lib/libedit.so.* | head -1)" $out/lib/compat/libedit.so.2
+    addAutoPatchelfSearchPath $out/lib/compat
   '';
 
   postFixup = if isDarwin then ''
@@ -75,16 +109,7 @@ pkgs.stdenv.mkDerivation {
     # ld64 from cctools which is a proper Apple-compatible linker.
     rm -f $out/bin/ld
     ln -s ${pkgs.darwin.binutils-unwrapped}/bin/ld $out/bin/ld
-  '' else ''
-    # Patch ELF binaries
-    if command -v patchelf &>/dev/null; then
-      find $out/bin -type f -executable | while read f; do
-        if file "$f" | grep -q ELF; then
-          patchelf --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" "$f" 2>/dev/null || true
-        fi
-      done
-    fi
-  '';
+  '' else "";
 
   meta = with pkgs.lib; {
     description = "Swift ${version} toolchain";
