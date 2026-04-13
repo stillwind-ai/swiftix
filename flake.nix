@@ -90,8 +90,11 @@
               "-Xclang-linker --sysroot=${pkgs.stdenv.cc.libc}"
             ];
 
-          linuxEnv = pkgs.lib.optionalString (!isDarwin) ''
+          # Ensure HOME is writable — CI sandboxes set HOME=/homeless-shelter
+          # which isn't writable, causing swiftc's clang module cache to fail.
+          envSetup = ''
             export HOME=$(mktemp -d)
+          '' + pkgs.lib.optionalString (!isDarwin) ''
             export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
             export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
           '';
@@ -118,7 +121,7 @@
 
               "compile-${safeName}" = pkgs.runCommand "swiftix-check-compile-${safeName}" {
                 buildInputs = checkDeps;
-              } (linuxEnv + ''
+              } (envSetup + ''
                 cat > hello.swift << 'EOF'
                 print("Hello from swiftix!")
                 let x = (1...10).reduce(0, +)
@@ -132,7 +135,7 @@
 
               "interpret-${safeName}" = pkgs.runCommand "swiftix-check-interpret-${safeName}" {
                 buildInputs = checkDeps;
-              } (linuxEnv + ''
+              } (envSetup + ''
                 echo 'print("interpreted!")' | ${swift}/bin/swift ${swiftcFlags} - 2>&1 | grep -q "interpreted"
                 touch $out
               '');
