@@ -79,19 +79,15 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     # directly, bypassing our -Xswiftc flags. Create wrapper scripts that
     # inject --gcc-toolchain and --sysroot so the bundled clang can always
     # find glibc CRT files and GCC support libraries.
+    # Only wrap swiftc — swift dispatches subcommands (build, package, etc.)
+    # and flags before the subcommand break dispatch. SwiftPM's internal
+    # manifest compilation calls swiftc directly, which is what needs the flags.
     _swiftix_wrappers=$(mktemp -d)
-    for bin in swift swiftc; do
-      cat > "$_swiftix_wrappers/$bin" <<WRAPPER
-    #!$(command -v bash)
-    exec "${swift}/bin/$bin" \
-      -Xcc --gcc-toolchain=${pkgs.stdenv.cc.cc} \
-      -Xcc --sysroot=${pkgs.stdenv.cc.libc} \
-      -Xclang-linker --gcc-toolchain=${pkgs.stdenv.cc.cc} \
-      -Xclang-linker --sysroot=${pkgs.stdenv.cc.libc} \
-      "\$@"
-    WRAPPER
-      chmod +x "$_swiftix_wrappers/$bin"
-    done
+    _bash="$(command -v bash)"
+    printf '#!%s\nexec "%s" -Xcc --gcc-toolchain=%s -Xcc --sysroot=%s -Xclang-linker --gcc-toolchain=%s -Xclang-linker --sysroot=%s "$@"\n' \
+      "$_bash" "${swift}/bin/swiftc" "${pkgs.stdenv.cc.cc}" "${pkgs.stdenv.cc.libc}" "${pkgs.stdenv.cc.cc}" "${pkgs.stdenv.cc.libc}" \
+      > "$_swiftix_wrappers/swiftc"
+    chmod +x "$_swiftix_wrappers/swiftc"
     export PATH="$_swiftix_wrappers:$PATH"
   '' + ''
     runHook postConfigure
