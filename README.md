@@ -1,5 +1,8 @@
 # swiftix
 
+[![built with garnix](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fgarnix.io%2Fapi%2Fbadges%2Fstillwind-ai%2Fswiftix)](https://garnix.io/repo/stillwind-ai/swiftix)
+
+
 Swift toolchains as Nix packages. Like [fenix](https://github.com/nix-community/fenix) for Rust, but for Swift.
 
 Downloads prebuilt toolchains from [swift.org](https://swift.org/download/) and makes them available as Nix packages with all native dependencies patched for NixOS and macOS.

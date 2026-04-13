@@ -58,9 +58,13 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
   nativeBuildInputs = [ swift ] ++ platformDeps
     ++ (args.nativeBuildInputs or []);
 
+  # Set deployment target at derivation level so it's available in all phases.
+  # SwiftPM reads this to set the -target triple version.
+  MACOSX_DEPLOYMENT_TARGET = pkgs.lib.optionalString isDarwin "14.0";
+
   configurePhase = ''
     runHook preConfigure
-    export HOME=$(mktemp -d)
+    export HOME="$(mktemp -d)"
   '' + swiftpmGenerated.configure
   + pkgs.lib.optionalString isDarwin ''
     export SDKROOT="${sdkRoot}"
