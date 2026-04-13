@@ -27,7 +27,7 @@ let
   isDarwin = pkgs.lib.hasSuffix "darwin" pkgs.system;
 
   platformDeps =
-    if isDarwin then [ pkgs.apple-sdk_15 pkgs.libcxx ]
+    if isDarwin then [ pkgs.apple-sdk_15 pkgs.libcxx pkgs.xcbuild ]
     else [ pkgs.stdenv.cc ];
 
   sdkRoot =
