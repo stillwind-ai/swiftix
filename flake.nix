@@ -68,23 +68,17 @@
       };
 
       # Checks: run via `nix flake check`
+      # Generates version/compile/interpret checks for every toolchain.
       checks = forAllSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
           isDarwin = pkgs.lib.hasSuffix "darwin" system;
-          # Test against the latest available toolchain
-          swift = self.packages.${system}.latest;
+          nixArch = if pkgs.lib.hasPrefix "aarch64" system then "aarch64" else "x86_64";
 
           # Platform-specific dependencies and flags for compilation checks
           checkDeps =
             if isDarwin then [ pkgs.apple-sdk_15 ]
             else [ pkgs.stdenv.cc pkgs.stdenv.cc.libc pkgs.stdenv.cc.libc.dev ];
-          # On Linux, swiftc's bundled clang can't find glibc and gcc CRT
-          # files in the Nix store. We need to pass explicit search paths.
-          gccLib = if isDarwin then null else
-            let cc = pkgs.stdenv.cc.cc;
-                triple = pkgs.stdenv.hostPlatform.config;
-            in "${cc}/lib/gcc/${triple}/${cc.version}";
 
           swiftcFlags =
             if isDarwin then
@@ -95,51 +89,55 @@
               "-Xclang-linker --gcc-toolchain=${pkgs.stdenv.cc.cc}"
               "-Xclang-linker --sysroot=${pkgs.stdenv.cc.libc}"
             ];
-        in {
-          # Smoke test: key binaries respond to --version
-          version = pkgs.runCommand "swiftix-check-version" {
-            buildInputs = checkDeps;
-          } ''
-            ${swift}/bin/swift --version
-            ${swift}/bin/swiftc --version
-            touch $out
+
+          linuxEnv = pkgs.lib.optionalString (!isDarwin) ''
+            export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
+            export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
           '';
 
-          # Compile and run a Swift program
-          compile = pkgs.runCommand "swiftix-check-compile" {
-            buildInputs = checkDeps;
-          } (
-            # On Linux, swiftc's bundled clang needs help finding glibc
-            # headers and CRT files in the Nix store.
-            (pkgs.lib.optionalString (!isDarwin) ''
-              export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
-              export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
-            '')
-            + ''
-            cat > hello.swift << 'EOF'
-            print("Hello from swiftix!")
-            let x = (1...10).reduce(0, +)
-            guard x == 55 else { fatalError("math is broken") }
-            print("Sum 1..10 = \(x)")
-            EOF
-            ${swift}/bin/swiftc ${swiftcFlags} -o hello hello.swift
-            ./hello | grep -q "Hello from swiftix"
-            touch $out
-          '');
+          # Generate checks for a single toolchain
+          mkChecks = release:
+            let
+              systemKey =
+                if isDarwin then "macOS"
+                else if nixArch == "x86_64" then "linux-x86_64"
+                else "linux-aarch64";
+              hash = release.hashes.${systemKey} or null;
+              safeName = builtins.replaceStrings ["."] ["_"] release.version;
+              swift = self.packages.${system}.${"swift-" + safeName};
+            in
+            pkgs.lib.optionalAttrs (hash != null) {
+              "version-${safeName}" = pkgs.runCommand "swiftix-check-version-${safeName}" {
+                buildInputs = checkDeps;
+              } ''
+                ${swift}/bin/swift --version
+                ${swift}/bin/swiftc --version
+                touch $out
+              '';
 
-          # Verify the REPL / interpreter mode works
-          interpret = pkgs.runCommand "swiftix-check-interpret" {
-            buildInputs = checkDeps;
-          } (
-            (pkgs.lib.optionalString (!isDarwin) ''
-              export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
-              export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
-            '')
-            + ''
-            echo 'print("interpreted!")' | ${swift}/bin/swift ${swiftcFlags} - 2>&1 | grep -q "interpreted"
-            touch $out
-          '');
-        }
+              "compile-${safeName}" = pkgs.runCommand "swiftix-check-compile-${safeName}" {
+                buildInputs = checkDeps;
+              } (linuxEnv + ''
+                cat > hello.swift << 'EOF'
+                print("Hello from swiftix!")
+                let x = (1...10).reduce(0, +)
+                guard x == 55 else { fatalError("math is broken") }
+                print("Sum 1..10 = \(x)")
+                EOF
+                ${swift}/bin/swiftc ${swiftcFlags} -o hello hello.swift
+                ./hello | grep -q "Hello from swiftix"
+                touch $out
+              '');
+
+              "interpret-${safeName}" = pkgs.runCommand "swiftix-check-interpret-${safeName}" {
+                buildInputs = checkDeps;
+              } (linuxEnv + ''
+                echo 'print("interpreted!")' | ${swift}/bin/swift ${swiftcFlags} - 2>&1 | grep -q "interpreted"
+                touch $out
+              '');
+            };
+
+        in builtins.foldl' (acc: release: acc // mkChecks release) {} releaseData
       );
     };
 }
