@@ -82,7 +82,7 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     _swiftix_wrappers=$(mktemp -d)
     for bin in swift swiftc; do
       cat > "$_swiftix_wrappers/$bin" <<WRAPPER
-    #!/bin/bash
+    #!$(command -v bash)
     exec "${swift}/bin/$bin" \
       -Xcc --gcc-toolchain=${pkgs.stdenv.cc.cc} \
       -Xcc --sysroot=${pkgs.stdenv.cc.libc} \
