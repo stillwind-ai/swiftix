@@ -1,0 +1,77 @@
+{
+  "object": {
+    "artifacts": [],
+    "dependencies": [
+      {
+        "basedOn": null,
+        "packageRef": {
+          "identity": "swift-algorithms",
+          "kind": "remoteSourceControl",
+          "location": "https://github.com/apple/swift-algorithms",
+          "name": "swift-algorithms"
+        },
+        "state": {
+          "checkoutState": {
+            "revision": "87e50f483c54e6efd60e885f7f5aa946cee68023",
+            "version": "1.2.1"
+          },
+          "name": "sourceControlCheckout"
+        },
+        "subpath": "swift-algorithms"
+      },
+      {
+        "basedOn": null,
+        "packageRef": {
+          "identity": "swift-argument-parser",
+          "kind": "remoteSourceControl",
+          "location": "https://github.com/apple/swift-argument-parser",
+          "name": "swift-argument-parser"
+        },
+        "state": {
+          "checkoutState": {
+            "revision": "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
+            "version": "1.7.1"
+          },
+          "name": "sourceControlCheckout"
+        },
+        "subpath": "swift-argument-parser"
+      },
+      {
+        "basedOn": null,
+        "packageRef": {
+          "identity": "swift-log",
+          "kind": "remoteSourceControl",
+          "location": "https://github.com/apple/swift-log",
+          "name": "swift-log"
+        },
+        "state": {
+          "checkoutState": {
+            "revision": "8c0f217f01000dd30f60d6e536569ad4e74291f9",
+            "version": "1.11.0"
+          },
+          "name": "sourceControlCheckout"
+        },
+        "subpath": "swift-log"
+      },
+      {
+        "basedOn": null,
+        "packageRef": {
+          "identity": "swift-numerics",
+          "kind": "remoteSourceControl",
+          "location": "https://github.com/apple/swift-numerics.git",
+          "name": "swift-numerics"
+        },
+        "state": {
+          "checkoutState": {
+            "revision": "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+            "version": "1.1.1"
+          },
+          "name": "sourceControlCheckout"
+        },
+        "subpath": "swift-numerics"
+      }
+    ],
+    "prebuilts": []
+  },
+  "version": 7
+}

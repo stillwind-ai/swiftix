@@ -162,9 +162,85 @@ On macOS, you may need to pass `-sdk` pointing to the macOS SDK if not using Xco
 swiftc -sdk $(xcrun --show-sdk-path) -o hello hello.swift
 ```
 
-## Building a Swift package (SwiftPM)
+## Building a SwiftPM project with `mkSwiftPackage`
 
-A complete example for building a SwiftPM project:
+swiftix provides `mkSwiftPackage` — a builder that handles all platform-specific toolchain wiring (SDK paths, linker flags, sandbox workarounds) so you can build SwiftPM projects as Nix derivations with reproducible, pre-fetched dependencies.
+
+### Step 1: Resolve dependencies
+
+In your Swift project, resolve dependencies to generate `.build/workspace-state.json`:
+
+```sh
+swift package resolve
+```
+
+### Step 2: Generate Nix dependency files
+
+Run `swiftpm2nix` (included with swiftix) to create fixed-output derivation expressions from the resolved dependencies:
+
+```sh
+nix run github:umgefahren/swiftix#legacyPackages.x86_64-linux.swiftpm2nix
+# or on macOS:
+nix run github:umgefahren/swiftix#legacyPackages.aarch64-darwin.swiftpm2nix
+```
+
+This creates a `nix/` directory with `default.nix` (hashes) and `workspace-state.json`. Commit these files.
+
+### Step 3: Write your flake.nix
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    swiftix.url = "github:umgefahren/swiftix";
+  };
+
+  outputs = { self, nixpkgs, swiftix, ... }:
+    let
+      systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = f: nixpkgs.lib.genAttrs systems f;
+    in {
+      packages = forAllSystems (system:
+        let
+          mkSwiftPackage = swiftix.legacyPackages.${system}.mkSwiftPackage;
+          swiftpm2nix = swiftix.legacyPackages.${system}.swiftpm2nix;
+        in {
+          default = mkSwiftPackage {
+            pname = "my-app";
+            version = "1.0.0";
+            src = ./.;
+            swift = swiftix.packages.${system}.swift-6_3;
+            swiftpmGenerated = swiftpm2nix.helpers ./nix;
+            executableName = "MyApp"; # name of the executable target
+          };
+        }
+      );
+    };
+}
+```
+
+Then build with `nix build`.
+
+### `mkSwiftPackage` options
+
+| Option | Default | Description |
+|---|---|---|
+| `pname` | required | Package name |
+| `version` | required | Package version |
+| `src` | required | Source directory |
+| `swift` | required | Swift toolchain from swiftix |
+| `swiftpmGenerated` | required | Output of `swiftpm2nix.helpers ./nix` |
+| `executableName` | `pname` | Name of the SwiftPM executable target |
+| `buildConfig` | `"release"` | `"release"` or `"debug"` |
+| `swiftFlags` | `[]` | Extra flags passed to `swift build` |
+
+All other attributes are passed through to `mkDerivation`.
+
+### Full example
+
+See the [`example/`](./example) directory for a complete SwiftPM project using `swift-argument-parser`, `swift-algorithms`, and `swift-log` from Apple.
+
+## Dev shell for SwiftPM projects
 
 ```nix
 {

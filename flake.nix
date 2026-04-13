@@ -62,6 +62,15 @@
         }
       );
 
+      # swiftpm2nix: tool + helpers for building SwiftPM projects with Nix
+      # mkSwiftPackage: builder function for SwiftPM projects
+      legacyPackages = forAllSystems (system:
+        let pkgs = nixpkgs.legacyPackages.${system}; in {
+          swiftpm2nix = pkgs.callPackage ./lib/swiftpm2nix { };
+          mkSwiftPackage = import ./lib/mkSwiftPackage.nix { inherit pkgs; };
+        }
+      );
+
       # Overlay for use with nixpkgs
       overlays.default = final: prev: {
         swiftix = self.packages.${prev.system};
