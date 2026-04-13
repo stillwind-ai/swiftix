@@ -28,13 +28,13 @@ Downloads prebuilt toolchains from [swift.org](https://swift.org/download/) and 
 Run Swift without installing anything:
 
 ```sh
-nix run github:umgefahren/swiftix -- --version
+nix run github:stillwind-ai/swiftix -- --version
 ```
 
 Or drop into a shell with a specific version:
 
 ```sh
-nix shell github:umgefahren/swiftix#swift-6_2_4
+nix shell github:stillwind-ai/swiftix#swift-6_2_4
 swift --version
 ```
 
@@ -48,7 +48,7 @@ The simplest way to use swiftix in your Swift project:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { nixpkgs, swiftix, ... }:
@@ -74,7 +74,7 @@ For a flake that works across all supported systems:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { nixpkgs, swiftix, ... }:
@@ -112,7 +112,7 @@ You can add swiftix to your nixpkgs as an overlay:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { nixpkgs, swiftix, ... }:
@@ -179,9 +179,9 @@ swift package resolve
 Run `swiftpm2nix` (included with swiftix) to create fixed-output derivation expressions from the resolved dependencies:
 
 ```sh
-nix run github:umgefahren/swiftix#legacyPackages.x86_64-linux.swiftpm2nix
+nix run github:stillwind-ai/swiftix#legacyPackages.x86_64-linux.swiftpm2nix
 # or on macOS:
-nix run github:umgefahren/swiftix#legacyPackages.aarch64-darwin.swiftpm2nix
+nix run github:stillwind-ai/swiftix#legacyPackages.aarch64-darwin.swiftpm2nix
 ```
 
 This creates a `nix/` directory with `default.nix` (hashes) and `workspace-state.json`. Commit these files.
@@ -192,7 +192,7 @@ This creates a `nix/` directory with `default.nix` (hashes) and `workspace-state
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { self, nixpkgs, swiftix, ... }:
@@ -246,7 +246,7 @@ See the [`example/`](./example) directory for a complete SwiftPM project using `
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { nixpkgs, swiftix, ... }:

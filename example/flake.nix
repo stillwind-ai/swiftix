@@ -3,7 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    swiftix.url = "github:umgefahren/swiftix";
+    swiftix.url = "github:stillwind-ai/swiftix";
   };
 
   outputs = { self, nixpkgs, swiftix, ... }:
