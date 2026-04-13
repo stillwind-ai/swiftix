@@ -36,6 +36,7 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = if isDarwin then [
     pkgs.xar
     pkgs.cpio
+    pkgs.darwin.sigtool
   ] else [
     pkgs.autoPatchelfHook
   ];
@@ -109,6 +110,25 @@ pkgs.stdenv.mkDerivation {
     # ld64 from cctools which is a proper Apple-compatible linker.
     rm -f $out/bin/ld
     ln -s ${pkgs.darwin.binutils-unwrapped}/bin/ld $out/bin/ld
+
+    # SwiftPM hardcodes /usr/bin/xcrun which doesn't exist in the Nix
+    # sandbox. Binary-patch all SwiftPM binaries to use "xcrun" (PATH
+    # lookup) instead. This is the same fix nixpkgs applies to their
+    # SwiftPM source before compiling (sed 's|/usr/bin/xcrun|xcrun|g').
+    # We null-pad to keep the same byte length.
+    for bin in $out/bin/swift-build $out/bin/swift-package $out/bin/swift-run $out/bin/swift-test $out/bin/swift-plugin-server; do
+      if [ -f "$bin" ]; then
+        sed -i "s|/usr/bin/xcrun|xcrun\x00\x00\x00\x00\x00\x00\x00\x00\x00|g" "$bin"
+        # Re-sign after patching — macOS kills binaries with invalid signatures
+        codesign -fs - "$bin"
+      fi
+    done
+
+    # Provide xcrun (from xcbuild) and libtool/vtool (from cctools) so
+    # SwiftPM can find them via PATH lookup after the binary patch above.
+    ln -sf ${pkgs.xcbuild}/bin/xcrun $out/bin/xcrun
+    ln -sf ${pkgs.darwin.cctools}/bin/libtool $out/bin/libtool
+    ln -sf ${pkgs.darwin.cctools}/bin/vtool $out/bin/vtool
   '' else "";
 
   meta = with pkgs.lib; {

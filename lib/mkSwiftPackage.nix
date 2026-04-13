@@ -27,7 +27,7 @@ let
   isDarwin = pkgs.lib.hasSuffix "darwin" pkgs.system;
 
   platformDeps =
-    if isDarwin then [ pkgs.apple-sdk_15 pkgs.libcxx pkgs.xcbuild ]
+    if isDarwin then [ pkgs.apple-sdk_15 pkgs.libcxx ]
     else [ pkgs.stdenv.cc ];
 
   sdkRoot =
@@ -35,8 +35,6 @@ let
       "${pkgs.apple-sdk_15}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
     else null;
 
-  # On Darwin, pass SDK directly. On Linux, sysroot is constructed at
-  # build time (configurePhase) and referenced via $_sysroot variable.
   platformSwiftcFlags =
     if isDarwin then [
       "-Xswiftc" "-sdk" "-Xswiftc" sdkRoot
@@ -75,22 +73,25 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     export C_INCLUDE_PATH="${pkgs.stdenv.cc.libc.dev}/include"
     export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
 
-    # Create a sysroot with the directory layout Swift's glibc.modulemap
-    # expects (/usr/include, /usr/lib). Nix's glibc puts headers at
-    # $out/include (no usr/ prefix), but Swift hardcodes /usr/include paths.
+    # Create a sysroot with the directory layout Swift expects.
+    # Swift's glibc.modulemap hardcodes /usr/include paths, and the Swift
+    # driver uses the sysroot (-sdk) to detect glibc for SwiftGlibc module.
     _sysroot=$(mktemp -d)
     mkdir -p "$_sysroot/usr"
     ln -s ${pkgs.stdenv.cc.libc.dev}/include "$_sysroot/usr/include"
     ln -s ${pkgs.stdenv.cc.libc}/lib "$_sysroot/usr/lib"
     ln -s ${pkgs.stdenv.cc.libc}/lib "$_sysroot/lib"
 
-    # SwiftPM resolves swiftc by absolute path from the swift binary's
-    # location, ignoring PATH. Use SWIFT_EXEC_MANIFEST to override the
-    # compiler used for Package.swift manifest compilation.
+    # SwiftPM resolves swiftc by absolute path from the swift binary,
+    # ignoring PATH. Use SWIFT_EXEC_MANIFEST to override the compiler
+    # for Package.swift manifest compilation. The wrapper injects:
+    # - -sdk: so Swift finds SwiftGlibc module
+    # - -Xcc --gcc-toolchain/--sysroot: so clang finds CRT files and headers
+    # - -Xclang-linker: same for the link step
     _swiftix_wrappers=$(mktemp -d)
     _bash="$(command -v bash)"
-    printf '#!%s\nexec "%s" -Xcc --gcc-toolchain=%s -Xcc --sysroot=%s -Xclang-linker --gcc-toolchain=%s -Xclang-linker --sysroot=%s "$@"\n' \
-      "$_bash" "${swift}/bin/swiftc" "${pkgs.stdenv.cc.cc}" "$_sysroot" "${pkgs.stdenv.cc.cc}" "$_sysroot" \
+    printf '#!%s\nexec "%s" -sdk %s -Xcc --gcc-toolchain=%s -Xcc --sysroot=%s -Xclang-linker --gcc-toolchain=%s -Xclang-linker --sysroot=%s "$@"\n' \
+      "$_bash" "${swift}/bin/swiftc" "$_sysroot" "${pkgs.stdenv.cc.cc}" "$_sysroot" "${pkgs.stdenv.cc.cc}" "$_sysroot" \
       > "$_swiftix_wrappers/swiftc"
     chmod +x "$_swiftix_wrappers/swiftc"
     export SWIFT_EXEC_MANIFEST="$_swiftix_wrappers/swiftc"
@@ -103,6 +104,7 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     runHook preBuild
     swift build ${builtins.concatStringsSep " " allFlags} \
   '' + pkgs.lib.optionalString (!isDarwin) ''
+      -Xswiftc -sdk -Xswiftc $_sysroot \
       -Xswiftc -Xcc -Xswiftc --gcc-toolchain=${pkgs.stdenv.cc.cc} \
       -Xswiftc -Xcc -Xswiftc --sysroot=$_sysroot \
       -Xswiftc -Xclang-linker -Xswiftc --gcc-toolchain=${pkgs.stdenv.cc.cc} \
