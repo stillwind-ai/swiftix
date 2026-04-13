@@ -74,13 +74,19 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     export LIBRARY_PATH="${pkgs.stdenv.cc.libc}/lib:${pkgs.stdenv.cc.cc.lib}/lib"
 
     # Create a sysroot with the directory layout Swift expects.
-    # Swift's glibc.modulemap hardcodes /usr/include paths, and the Swift
-    # driver uses the sysroot (-sdk) to detect glibc for SwiftGlibc module.
+    # Swift's glibc.modulemap hardcodes /usr/include paths, the Swift
+    # driver uses the sysroot (-sdk) to detect glibc for SwiftGlibc,
+    # and it also looks for swiftrt.o under $SDK/usr/lib/swift/.
     _sysroot=$(mktemp -d)
-    mkdir -p "$_sysroot/usr"
+    mkdir -p "$_sysroot/usr/lib"
     ln -s ${pkgs.stdenv.cc.libc.dev}/include "$_sysroot/usr/include"
-    ln -s ${pkgs.stdenv.cc.libc}/lib "$_sysroot/usr/lib"
-    ln -s ${pkgs.stdenv.cc.libc}/lib "$_sysroot/lib"
+    # Symlink glibc lib contents (not the directory itself, so we can
+    # also add the Swift runtime alongside)
+    for f in ${pkgs.stdenv.cc.libc}/lib/*; do
+      ln -sf "$f" "$_sysroot/usr/lib/"
+    done
+    ln -sf ${swift}/lib/swift "$_sysroot/usr/lib/swift"
+    ln -sf ${pkgs.stdenv.cc.libc}/lib "$_sysroot/lib"
 
     # SwiftPM resolves swiftc by absolute path from the swift binary,
     # ignoring PATH. Use SWIFT_EXEC_MANIFEST to override the compiler
