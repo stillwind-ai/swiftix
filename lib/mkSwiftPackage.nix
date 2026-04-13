@@ -78,7 +78,7 @@ pkgs.stdenv.mkDerivation (cleanArgs // {
     # CI builders. Use SWIFT_EXEC_MANIFEST to inject -target with a version.
     _swiftix_wrappers=$(mktemp -d)
     _bash="$(command -v bash)"
-    printf '#!%s\nexec "%s" -target ${darwinArch}-apple-macosx14.0 "$@"\n' \
+    printf '#!%s\nexec "%s" "$@" -target ${darwinArch}-apple-macosx14.0\n' \
       "$_bash" "${swift}/bin/swiftc" \
       > "$_swiftix_wrappers/swiftc"
     chmod +x "$_swiftix_wrappers/swiftc"
