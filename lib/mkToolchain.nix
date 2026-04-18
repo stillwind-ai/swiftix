@@ -148,6 +148,18 @@ pkgs.stdenv.mkDerivation {
     # this, link fails with `Executable "ld" doesn't exist!`.
     ln -sf ${pkgs.binutils-unwrapped}/bin/ld "$out/bin/ld"
 
+    ${pkgs.lib.optionalString (pkgs.lib.hasPrefix "5." version) ''
+      # Swift 5.10's bundled clang-15 driver injects `-fuse-ld=gold`
+      # unconditionally on Linux. clang resolves that by looking for
+      # `ld.gold` on PATH and errors with "invalid linker name" if it's
+      # absent. Newer Swift (6.x) doesn't do this. Symlink the nixpkgs
+      # binutils ld.gold (and ld.bfd for completeness) into $out/bin so
+      # clang's probe succeeds. Gated on major version 5 so we don't drag
+      # extra binaries into newer toolchains that don't need them.
+      ln -sf ${pkgs.binutils-unwrapped}/bin/ld.gold "$out/bin/ld.gold"
+      ln -sf ${pkgs.binutils-unwrapped}/bin/ld.bfd "$out/bin/ld.bfd"
+    ''}
+
     # 2. Install a shell wrapper for swiftc that exec's swift-driver under
     #    argv[0]=swiftc with our sysroot flags prepended. We deliberately do
     #    NOT wrap `swift` — `swift <subcommand>` (e.g. `swift build`, `swift
@@ -183,6 +195,11 @@ pkgs.stdenv.mkDerivation {
       -Xclang-linker -Wl,--dynamic-linker=${pkgs.stdenv.cc.bintools.dynamicLinker} \\
       -L${linuxCC.lib}/lib \\
       -Xclang-linker -L${linuxCC.lib}/lib \\
+      -Xclang-linker -Wl,-rpath-link,$out/lib/swift/linux \\
+      -Xclang-linker -Wl,-rpath,${linuxCC.lib}/lib \\
+      -Xlinker -lstdc++ \\
+      -Xlinker -lm \\
+      -Xlinker -ldispatch \\
       "\$@"
     EOF
     chmod +x "$out/bin/swiftc"
