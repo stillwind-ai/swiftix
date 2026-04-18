@@ -2,7 +2,24 @@
 
 let
   isDarwin = pkgs.lib.hasSuffix "darwin" system;
+  isLinux = !isDarwin;
   nixArch = if pkgs.lib.hasPrefix "aarch64" system then "aarch64" else "x86_64";
+
+  # Linux: we bake a sysroot + wrapper into the toolchain so that `swift build`
+  # and `swiftc` work out-of-the-box in plain devShells, without callers having
+  # to replicate the sysroot setup from mkSwiftPackage.nix. The Swift.org
+  # tarball expects a distro-style `/usr/{include,lib}` layout plus libgcc
+  # crt files on the default linker search path — NixOS has neither.
+  #
+  # The wrapper injects:
+  #   -sdk <sysroot>                  : tells Swift where SwiftGlibc / swiftrt.o live
+  #   -Xcc --gcc-toolchain=<cc>       : clang finds crt*.o / libgcc_s
+  #   -Xcc --sysroot=<sysroot>        : clang finds glibc headers
+  #   -Xclang-linker --gcc-toolchain=<cc> -Xclang-linker --sysroot=<sysroot>
+  #                                    : same for the link step
+  linuxCC       = if isLinux then pkgs.stdenv.cc.cc       else null;
+  linuxLibc     = if isLinux then pkgs.stdenv.cc.libc     else null;
+  linuxLibcDev  = if isLinux then pkgs.stdenv.cc.libc.dev else null;
 
   # URL construction
   # Release category: "swift-6.3-release" from tag "swift-6.3-RELEASE"
@@ -102,7 +119,89 @@ pkgs.stdenv.mkDerivation {
     addAutoPatchelfSearchPath $out/lib/compat
   '';
 
-  postFixup = if isDarwin then ''
+  postFixup = if isLinux then ''
+    # --- Linux: bake in a sysroot + wrapper so `swift build` works on NixOS ---
+    #
+    # The Swift.org Linux tarball is built expecting a distro where
+    # /usr/lib/x86_64-linux-gnu/Scrt1.o, libgcc_s, etc. exist on the default
+    # search path. NixOS has none of this; glibc lives at ${linuxLibc}/lib
+    # and libgcc_s at ${linuxCC.lib}/lib. Without help, Swift's embedded
+    # clang-driven link step fails with "cannot open Scrt1.o" and friends.
+    #
+    # We construct a sysroot that stitches together glibc + Swift runtime
+    # in the directory layout Swift's driver / glibc.modulemap expect, then
+    # wrap `swift` and `swiftc` so every invocation picks it up.
+
+    # 1. Build the sysroot inside the toolchain.
+    mkdir -p "$out/sysroot/usr/lib"
+    ln -s ${linuxLibcDev}/include "$out/sysroot/usr/include"
+    for f in ${linuxLibc}/lib/*; do
+      ln -sf "$f" "$out/sysroot/usr/lib/"
+    done
+    ln -sf "$out/lib/swift" "$out/sysroot/usr/lib/swift"
+    ln -sf ${linuxLibc}/lib "$out/sysroot/lib"
+
+    # 2. Install a shell wrapper for swiftc that exec's swift-driver under
+    #    argv[0]=swiftc with our sysroot flags prepended. We deliberately do
+    #    NOT wrap `swift` — `swift <subcommand>` (e.g. `swift build`, `swift
+    #    package`) dispatches on the first argument, and injecting flags
+    #    before it would break that.
+    #
+    #    SwiftPM compiles Package.swift manifests by invoking swiftc via
+    #    absolute path, so wrapping swiftc is enough to get the manifest
+    #    build working. For user-source compilation, SwiftPM forks swiftc
+    #    again, also picked up here.
+    rm -f "$out/bin/swiftc"
+    cat > "$out/bin/swiftc" <<EOF
+    #!${pkgs.runtimeShell}
+    # swiftix-injected wrapper: feed swift-driver our NixOS sysroot +
+    # gcc-toolchain so Swift's embedded clang/linker can find crt*.o, libc
+    # headers, and libgcc_s (the last lives in cc.lib, which --gcc-toolchain
+    # alone does not cover — hence the explicit -L).
+    #
+    # Some integrated tool modes (notably -modulewrap, -frontend, repl) must
+    # receive their trigger flag as argv[1]; injecting -sdk before them would
+    # cause swift-driver to reject the invocation. Pass those through bare.
+    case "\''${1:-}" in
+      -modulewrap|-frontend|-repl|repl|--driver-mode=*)
+        exec -a swiftc "$out/bin/swift-driver" "\$@"
+        ;;
+    esac
+    exec -a swiftc "$out/bin/swift-driver" \\
+      -sdk "$out/sysroot" \\
+      -Xcc --gcc-toolchain=${linuxCC} \\
+      -Xcc --sysroot="$out/sysroot" \\
+      -Xclang-linker --gcc-toolchain=${linuxCC} \\
+      -Xclang-linker --sysroot="$out/sysroot" \\
+      -L${linuxCC.lib}/lib \\
+      -Xclang-linker -L${linuxCC.lib}/lib \\
+      "\$@"
+    EOF
+    chmod +x "$out/bin/swiftc"
+
+    # 3. Setup hook: sourced automatically when the toolchain is in a shell's
+    #    buildInputs / nativeBuildInputs (and by mkShell). SwiftPM uses $CC
+    #    for C sources; stdenv would point that at gcc, which doesn't accept
+    #    the clang flags Swift emits (-target, -fblocks, ...). Override it
+    #    to our bundled clang.
+    #
+    #    Because stdenv's cc-wrapper sets CC=gcc from its own setup-hook, we
+    #    register our override through a preConfigureHook so it runs *after*
+    #    all buildInput setup-hooks have executed. For interactive devShells
+    #    (where configure never runs), we additionally append to shellHook
+    #    via the NIX_SWIFTIX_CC_OVERRIDE mechanism.
+    mkdir -p "$out/nix-support"
+    cat > "$out/nix-support/setup-hook" <<HOOK
+    _swiftix_cc_override() {
+      export CC="$out/bin/clang"
+      export CXX="$out/bin/clang++"
+    }
+    preConfigureHooks+=(_swiftix_cc_override)
+    # Also run immediately (handles devShells, which source setup-hooks but
+    # never invoke preConfigureHooks). Safe to run twice.
+    _swiftix_cc_override
+    HOOK
+  '' else if isDarwin then ''
     # Make the toolchain work in pure Nix environments (sandbox):
     # swiftc's bundled clang invokes its co-located "ld" to link.
     # The toolchain ships LLD but its ld64 personality doesn't support
