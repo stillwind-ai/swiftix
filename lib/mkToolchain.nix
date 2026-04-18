@@ -141,6 +141,13 @@ pkgs.stdenv.mkDerivation {
     ln -sf "$out/lib/swift" "$out/sysroot/usr/lib/swift"
     ln -sf ${linuxLibc}/lib "$out/sysroot/lib"
 
+    # Provide a plain `ld` at $out/bin/ld (nixpkgs binutils). Swift's
+    # link step goes swiftc → clang → ld; clang searches for ld first
+    # on PATH (not in --gcc-toolchain, since raw gcc doesn't ship ld),
+    # and in a bare devShell the only PATH entry is $out/bin. Without
+    # this, link fails with `Executable "ld" doesn't exist!`.
+    ln -sf ${pkgs.binutils-unwrapped}/bin/ld "$out/bin/ld"
+
     # 2. Install a shell wrapper for swiftc that exec's swift-driver under
     #    argv[0]=swiftc with our sysroot flags prepended. We deliberately do
     #    NOT wrap `swift` — `swift <subcommand>` (e.g. `swift build`, `swift
